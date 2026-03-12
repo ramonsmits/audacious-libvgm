@@ -1,3 +1,4 @@
 [submodule "libvgm"]
 	path = libvgm
-	url = https://github.com/ValleyBell/libvgm
+	url = https://github.com/ramonsmits/libvgm.git
+	branch = k051649-panning
