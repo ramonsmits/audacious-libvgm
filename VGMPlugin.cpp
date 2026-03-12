@@ -5,6 +5,7 @@
 #include <libaudcore/plugin.h>
 #include <libaudcore/preferences.h>
 #include <libaudcore/runtime.h>
+#include <emu/SoundDevs.h>
 #include <player/playera.hpp> // libvgm, please put yourself in a directory
 #include <player/vgmplayer.hpp>
 #include <player/s98player.hpp>
@@ -37,6 +38,17 @@ const char *const VGMPlugin::defaults[] = {
 	"fade_time",         "5000",
 	"end_silence",       "1000",
 	"loop_end_silence",  "0",
+
+	// Panning
+	"stereo_pan",        "TRUE",
+	"psg_a_pan",         "-128",
+	"psg_b_pan",         "128",
+	"psg_c_pan",         "0",
+	"scc_1_pan",         "-192",
+	"scc_2_pan",         "-96",
+	"scc_3_pan",         "0",
+	"scc_4_pan",         "96",
+	"scc_5_pan",         "192",
 
 	// Tagging
 	"untranslated_tags", "FALSE",
@@ -72,18 +84,6 @@ const PreferencesWidget VGMPlugin::widgets[] = {
 		{ bit_depth_widgets }
 	),
 
-	/**
-	 * TODO (to match vgmplay):
-	 * - chip_rate
-	 * - resampling_mode
-	 * - chip_sampling_mode
-	 * - playback_rate
-	 * - volume
-	 * Channel muting and other such chip configuration might not be possible
-	 * (atleast in a sane manner) due to how limited Audacious' preferences
-	 * API is.
-	 */
-
 	WidgetLabel(N_("<b>Duration</b>")),
 
 	WidgetSpin(
@@ -108,6 +108,65 @@ const PreferencesWidget VGMPlugin::widgets[] = {
 		N_("Loop end silence:"),
 		WidgetInt(CFG_SECTION, "loop_end_silence"),
 		{ 0, 10000, 500, N_("ms") }
+	),
+
+	WidgetLabel(N_("<b>Stereo Panning</b>")),
+
+	WidgetCheck(
+		N_("Enable stereo panning"),
+		WidgetBool(CFG_SECTION, "stereo_pan")
+	),
+
+	WidgetLabel(N_("PSG (AY8910) channels:")),
+
+	WidgetSpin(
+		N_("  Channel A:"),
+		WidgetInt(CFG_SECTION, "psg_a_pan"),
+		{ -256, 256, 8, N_("L/R") }
+	),
+
+	WidgetSpin(
+		N_("  Channel B:"),
+		WidgetInt(CFG_SECTION, "psg_b_pan"),
+		{ -256, 256, 8, N_("L/R") }
+	),
+
+	WidgetSpin(
+		N_("  Channel C:"),
+		WidgetInt(CFG_SECTION, "psg_c_pan"),
+		{ -256, 256, 8, N_("L/R") }
+	),
+
+	WidgetLabel(N_("SCC (K051649) channels:")),
+
+	WidgetSpin(
+		N_("  Channel 1:"),
+		WidgetInt(CFG_SECTION, "scc_1_pan"),
+		{ -256, 256, 8, N_("L/R") }
+	),
+
+	WidgetSpin(
+		N_("  Channel 2:"),
+		WidgetInt(CFG_SECTION, "scc_2_pan"),
+		{ -256, 256, 8, N_("L/R") }
+	),
+
+	WidgetSpin(
+		N_("  Channel 3:"),
+		WidgetInt(CFG_SECTION, "scc_3_pan"),
+		{ -256, 256, 8, N_("L/R") }
+	),
+
+	WidgetSpin(
+		N_("  Channel 4:"),
+		WidgetInt(CFG_SECTION, "scc_4_pan"),
+		{ -256, 256, 8, N_("L/R") }
+	),
+
+	WidgetSpin(
+		N_("  Channel 5:"),
+		WidgetInt(CFG_SECTION, "scc_5_pan"),
+		{ -256, 256, 8, N_("L/R") }
 	),
 
 	WidgetLabel(N_("<b>Tagging</b>")),
@@ -341,6 +400,7 @@ bool VGMPlugin::play(const char *filename, VFSFile &file)
 	}
 
 	apply_player_settings(main_player);
+	apply_device_panning(main_player->GetPlayer());
 
 	if ((ret = main_player->Start()))
 	{
@@ -388,6 +448,17 @@ void VGMPlugin::load_settings()
 	self.config.end_silence = aud_get_int(CFG_SECTION, "end_silence");
 	self.config.loop_end_silence = aud_get_int(CFG_SECTION, "loop_end_silence");
 
+	// Panning
+	self.config.stereo_pan = aud_get_bool(CFG_SECTION, "stereo_pan");
+	self.config.psg_a_pan = aud_get_int(CFG_SECTION, "psg_a_pan");
+	self.config.psg_b_pan = aud_get_int(CFG_SECTION, "psg_b_pan");
+	self.config.psg_c_pan = aud_get_int(CFG_SECTION, "psg_c_pan");
+	self.config.scc_1_pan = aud_get_int(CFG_SECTION, "scc_1_pan");
+	self.config.scc_2_pan = aud_get_int(CFG_SECTION, "scc_2_pan");
+	self.config.scc_3_pan = aud_get_int(CFG_SECTION, "scc_3_pan");
+	self.config.scc_4_pan = aud_get_int(CFG_SECTION, "scc_4_pan");
+	self.config.scc_5_pan = aud_get_int(CFG_SECTION, "scc_5_pan");
+
 	// Tagging
 	self.config.untranslated_tags = aud_get_bool(CFG_SECTION, "untranslated_tags");
 
@@ -403,6 +474,40 @@ void VGMPlugin::apply_player_settings(PlayerA *player)
 	player->SetFadeSamples(player->GetSampleRate() * (config.fade_time / 1000.f));
 	UINT32 end_silence = (player->GetLoopTime() > 0) ? config.loop_end_silence : config.end_silence;
 	player->SetEndSilenceSamples(player->GetSampleRate() * (end_silence / 1000.f));
+}
+
+void VGMPlugin::apply_device_panning(PlayerBase *player)
+{
+	if (!config.stereo_pan)
+		return;
+
+	PLR_DEV_OPTS devOpts;
+	UINT32 devOptID;
+	UINT8 ret;
+
+	// AY8910 (PSG) - 3 channels
+	devOptID = PLR_DEV_ID(DEVID_AY8910, 0);
+	ret = player->GetDeviceOptions(devOptID, devOpts);
+	if (!(ret & 0x80))
+	{
+		devOpts.panOpts.chnPan[0][0] = (INT16)config.psg_a_pan;
+		devOpts.panOpts.chnPan[0][1] = (INT16)config.psg_b_pan;
+		devOpts.panOpts.chnPan[0][2] = (INT16)config.psg_c_pan;
+		player->SetDeviceOptions(devOptID, devOpts);
+	}
+
+	// K051649 (SCC) - 5 channels
+	devOptID = PLR_DEV_ID(DEVID_K051649, 0);
+	ret = player->GetDeviceOptions(devOptID, devOpts);
+	if (!(ret & 0x80))
+	{
+		devOpts.panOpts.chnPan[0][0] = (INT16)config.scc_1_pan;
+		devOpts.panOpts.chnPan[0][1] = (INT16)config.scc_2_pan;
+		devOpts.panOpts.chnPan[0][2] = (INT16)config.scc_3_pan;
+		devOpts.panOpts.chnPan[0][3] = (INT16)config.scc_4_pan;
+		devOpts.panOpts.chnPan[0][4] = (INT16)config.scc_5_pan;
+		player->SetDeviceOptions(devOptID, devOpts);
+	}
 }
 
 void VGMPlugin::allocate_sample_buffer()

@@ -57,6 +57,8 @@ private:
 	static DATA_LOADER *file_callback(void *user_param, PlayerBase *player, const char *filename);
 	static void log_callback(void *user_param, PlayerBase *player, UINT8 level, UINT8 src_type, const char *src_tag, const char *message);
 
+	void apply_device_panning(PlayerBase *player);
+
 	struct Config {
 		// Audio
 		UINT32 sample_rate;
@@ -67,6 +69,11 @@ private:
 		UINT32 fade_time;
 		UINT32 end_silence;
 		UINT32 loop_end_silence;
+
+		// Panning (scale: -256 = hard left, 0 = center, +256 = hard right)
+		bool stereo_pan;
+		int psg_a_pan, psg_b_pan, psg_c_pan;
+		int scc_1_pan, scc_2_pan, scc_3_pan, scc_4_pan, scc_5_pan;
 
 		// Tagging
 		bool untranslated_tags;
